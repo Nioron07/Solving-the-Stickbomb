@@ -1,2 +1,5 @@
-bin/output.exe
-.vscode
+# Ignore VS Code project settings
+.vscode/
+
+# Ignore everything generated in bin/
+bin/
