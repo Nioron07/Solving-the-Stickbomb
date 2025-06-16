@@ -62,6 +62,7 @@ private:
     /* ────────────────────────────────────────────────────────────────── */
     int matrixSize_{0};                                       ///< side length
     std::vector<std::vector<std::string>> data_;              ///< cell text
+    unsigned num_connecs_elim_ = 0;                           ///< number of connections eliminated by last made connection
 
     /* ────────────────────────────────────────────────────────────────── */
     /*  Console / input helpers                                          */

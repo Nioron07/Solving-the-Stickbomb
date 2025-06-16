@@ -13,7 +13,7 @@
  *      3. expands that edge into a pattern of x/+/– inside the two blocks.
  ******************************************************************************/
 
-#include "Matrix.hpp"
+#include "matrix.hpp"
 #include <iomanip>
 #include <iostream>
 #include <limits>
@@ -45,6 +45,8 @@ Matrix::Matrix()
 
 void Matrix::updateMatrix()
 {
+    num_connecs_elim_ = 0;
+
     /* 1. gather user input */
     const int first  = promptNodeIndex("Enter the first number")  - 1; // 0-based
     const int second = promptNodeIndex("Enter the second number") - 1;
@@ -67,6 +69,8 @@ void Matrix::updateMatrix()
 
     /* 6. expand into the 3×3 stick blocks */
     applyEdgeTypeRules(locFirst, locSecond, first, second, userSign);
+
+    std::cout << "Number of moves eliminated: " << num_connecs_elim_;
 }
 
 /* optional helper used above */
@@ -227,6 +231,7 @@ void Matrix::applyEdgeTypeRules(Location l1, Location l2,
     for (int r = rS; r <= rE; ++r)
         for (int c = cS; c <= cE; ++c)
         {
+            num_connecs_elim_ += 4;
             writeCell(r, c, "x");
             writeCell(c, r, "x");            // mirror
         }
@@ -255,6 +260,9 @@ void Matrix::applyEdgeTypeRules(Location l1, Location l2,
 
     writeCell(midS, endC, inv);          // vertical pair
     writeCell(midE, endC, inv);
+
+    
+    num_connecs_elim_ -= 4;
 }
 
 /* ───────────────── connection helper ───────────────────────────────── */

@@ -6,7 +6,7 @@
  *  • Repeatedly asks the user for connections until the matrix is full.
  ******************************************************************************/
 
-#include "Matrix.hpp"
+#include "matrix.hpp"
 #include <iostream>
 
 int main()
