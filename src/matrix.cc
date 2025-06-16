@@ -1,283 +1,282 @@
+/******************************************************************************
+ *  Matrix.cpp  —  implementation of the stick-bomb matrix
+ *
+ *  Overview
+ *  --------
+ *  * A stick-bomb with N sticks builds a matrix of (N × 3)² cells.
+ *  * Each stick is a 3 × 3 block whose nodes are labelled
+ *      E1 | M | E2  (rows 0–2, cols 0–2).
+ *  * The constructor lays down a static ‘x / 2’ diagonal scaffold.
+ *  * Each user operation:
+ *      1. asks for two node numbers and a sign (+/–)
+ *      2. writes ±1 for the directed edge
+ *      3. expands that edge into a pattern of x/+/– inside the two blocks.
+ ******************************************************************************/
+
 #include "Matrix.hpp"
+#include <iomanip>
 #include <iostream>
-#include <iomanip>              // for std::setw
 #include <limits>
-#include <string>
 
-Matrix::Matrix() {
-    
-    Clear();
-    while (true) {
-        std::cout << "Enter number of sticks (>=4): ";
-        std::cin >> n_;
-        if (std::cin.fail()) {
-            std::cin.clear();
-            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-            std::cout << "Invalid input. Please enter an integer.\n";
-            continue;
-        }
-        if (n_ < 4) {
-            std::cout << "Number of sticks must be >=4\n";
-        } else {
-            break;
-        }
-    }
-    n_ = n_ * 3;
-    // Initialize matrix with "0" and set the diagonal to "x"
-    data_.assign(n_, std::vector<std::string>(n_, "0"));  // Fill all with "0"
-    
-    // Create the pattern based on the diagonal and adjacent 3-blocks
-    for (int i = 0; i < n_; ++i) {
-        for (int j = 0; j < n_; ++j) {
-            if (i == j) {
-                data_[i][j] = "x";  // Diagonal elements are "x"
-            }
-        }
-    }
+/* shorten namespace noise */
+using std::cout;
+using std::cin;
+using std::string;
+using std::vector;
 
-    // Fill the 3-blocks around the diagonal
-    for (int i = 1; i < n_; i += 3) {
-        data_[i - 1][i + 1] = "x";
-        data_[i + 1][i - 1] = "x";
-        
-        data_[i][i + 1] = "2";  // Value "2" for adjacent blocks
-        data_[i - 1][i] = "2";  // Value "2" for adjacent blocks
-        data_[i][i - 1] = "2";  // Value "2" for adjacent blocks
-        data_[i + 1][i] = "2";  // Value "2" for adjacent blocks
-    }
-}
+/* ANSI colour helpers (omit on non-VT consoles) */
+#define RESET_COLOUR "\033[0m"
+#define RED_COLOUR   "\033[31m"
 
-bool Matrix::CheckIfFull() {
-    for (int i = 0; i < n_; i++) {
-        for (int j = 0; j < n_; j++) {
-            if (data_[i][j] == "0") {
-                return false;
-            }
-        }
-    }
-    return true;
-}
+/* ───────────────────────── ctor / setup ─────────────────────────────── */
 
-void Matrix::updateMatrix() {
-    // Get user input directly within the function
-    int num1, num2;
-    char op;
-
-    std::cout << "Enter the first number (1 to " << n_ << "): ";
-    std::cin >> num1;
-    std::cout << "Enter the second number (1 to " << n_ << "): ";
-    std::cin >> num2;
-
-    // Determine node locations
-    Location num1_loc;
-    Location num2_loc;
-    AssignNodeLocations(num1, num1_loc, num2, num2_loc);
-
-    // Convert user input to 0-indexed
-    num1 -= 1;
-    num2 -= 1;
-
-    // Ensure the numbers are within bounds
-    if (num1 < 0 || num1 >= n_ || num2 < 0 || num2 >= n_ || (data_[num1][num2] != "0" && data_[num1][num2] != "-" && data_[num1][num2] != "+")) {
-        Clear();
-        std::cout << "Invalid connection" << std::endl;
-        return;
-    }
-    std::cout << "Enter operation ('+' or '-'): ";
-    std::cin >> op;
-
-    // Update the matrix based on the operation
-    if (op == '+' && (data_[num1][num2] != "-")) {
-        data_[num1][num2] = "1";  // Place 1 as "1"
-        data_[num2][num1] = "-1";   // Place -1 as "-1"
-    } else if (op == '-'  && (data_[num1][num2] != "+")) {
-        data_[num1][num2] = "-1";   // Place -1 as "-1"
-        data_[num2][num1] = "1";  // Place 1 as "1"
-    } else {
-        Clear();
-        std::cout << "Invalid operation. Use '+' or '-' only and the sign must match the required sign." << std::endl;
-        return;
-    }
-
-    // Replace zeros in both the rows and columns of the specified numbers with '-'
-    EdgeTypeRules(num1_loc, num2_loc, num1, num2, op);
-}
-
-void Matrix::AssignNodeLocations(int num1, Matrix::Location &num1_loc, int num2, Matrix::Location &num2_loc)
+Matrix::Matrix()
 {
-    if (num1 % 3 == 1)
-    {
-        num1_loc = Location::E1;
-    }
-    else if (num1 % 3 == 2)
-    {
-        num1_loc = Location::M;
-    }
-    else
-    {
-        num1_loc = Location::E2;
-    }
+    clearConsole();
+    int stickCount = promptStickCount();           // ask ≥ 4
 
-    if (num2 % 3 == 1)
-    {
-        num2_loc = Location::E1;
-    }
-    else if (num2 % 3 == 2)
-    {
-        num2_loc = Location::M;
-    }
-    else
-    {
-        num2_loc = Location::E2;
-    }
+    matrixSize_ = stickCount * 3;                  // each stick → 3 rows/cols
+    data_.assign(matrixSize_, vector<string>(matrixSize_, "0"));
+
+    initialiseStaticPattern();                     // scaffold
 }
 
+/* ───────────────── public user interface ────────────────────────────── */
+
+void Matrix::updateMatrix()
+{
+    /* 1. gather user input */
+    const int first  = promptNodeIndex("Enter the first number")  - 1; // 0-based
+    const int second = promptNodeIndex("Enter the second number") - 1;
+    const char userSign = promptSign();
+
+    /* 2. quick bounds & occupancy check */
+    if (!isWritable(first, second)) return;
+
+    /* 3. sign-bounding sanity check */
+    bool isError{};
+    checkSignBounding(userSign, first, second, isError);
+    if (isError) return;
+
+    /* 4. classify node locations */
+    Location locFirst, locSecond;
+    assignLocations(first, locFirst, second, locSecond);
+
+    /* 5. write ±1 for the directed edge */
+    applyDirectedSign(first, second, userSign);
+
+    /* 6. expand into the 3×3 stick blocks */
+    applyEdgeTypeRules(locFirst, locSecond, first, second, userSign);
+}
+
+/* optional helper used above */
+void Matrix::checkSignBounding(char sign, int i, int j, bool& flag)
+{
+    flag = ( (sign == '-' && data_[i][j] == "+") ||
+             (sign == '+' && data_[i][j] == "-") );
+    if (flag) cout << "Invalid input: sign must match existing bound.\n";
+}
+
+/* pretty-print with red x’s and axis guides */
 void Matrix::print() const
 {
-    constexpr int cellWidth = 4;
+    constexpr int W = 4;
+    cout << std::setw(W) << ' ' << " |";
+    for (int c = 0; c < matrixSize_; ++c) cout << std::setw(W) << c + 1;
+    cout << '\n' << string(W, '-') << "-+" << string(matrixSize_ * W, '-') << '\n';
 
-    /* column header ------------------------------------------------------ */
-    std::cout << std::setw(cellWidth) << ' ' << " |";      // ← divider here
-    for (int j = 0; j < n_; ++j)
-        std::cout << std::setw(cellWidth) << j + 1;
-    std::cout << '\n';
-
-    /* horizontal ruler --------------------------------------------------- */
-    std::cout << std::string(cellWidth, '-') << "-+"        // ← matches the “ |”
-              << std::string(n_ * cellWidth, '-') << '\n';
-
-    /* rows ---------------------------------------------------------------- */
-    for (int i = 0; i < n_; ++i) {
-        std::cout << std::setw(cellWidth) << i + 1 << " |"; // ← divider here
-
-        for (int j = 0; j < n_; ++j) {
-            if (data_[i][j] == "x") {
-                std::cout << "\033[31m"
-                          << std::setw(cellWidth) << 'x'
-                          << "\033[0m";
-            } else {
-                std::cout << std::setw(cellWidth) << data_[i][j];
-            }
+    for (int r = 0; r < matrixSize_; ++r)
+    {
+        cout << std::setw(W) << r + 1 << " |";
+        for (int c = 0; c < matrixSize_; ++c)
+        {
+            const string& cell = data_[r][c];
+            if (cell == "x")
+                cout << RED_COLOUR << std::setw(W) << 'x' << RESET_COLOUR;
+            else
+                cout << std::setw(W) << cell;
         }
-        std::cout << '\n';
+        cout << '\n';
     }
 }
 
+/* ───────────────── console helpers ─────────────────────────────────── */
 
+void Matrix::clearConsole() { cout << "\n\n"; }
 
-
-/**************************************************************************
- * Matrix::EdgeTypeRules
- * ---------------------
- * Update the adjacency matrix `data_` after the user joins two “sticks”.
- *
- *  ❶ End ↔ End   or   Mid ↔ Mid
- *     • Every untouched cell in the two 3 × 3 rectangles becomes "x".
- *
- *  ❷ Mid ↔ End   (exactly one side is “M”)
- *     • First blanket-fill the two rectangles with 'x'.
- *     • Then add four signs:
- *         – The **End-stick** block gets a horizontal pair of the
- *           *user* sign (`+` or `-`).
- *         – The **Mid-stick** block gets a vertical pair of the
- *           *inverse* sign.
- **************************************************************************/
-void Matrix::EdgeTypeRules(Location  node1Location,
-                           Location  node2Location,
-                           int       node1Index,
-                           int       node2Index,
-                           char      userSign)
+void Matrix::flushBadInput()
 {
-    /* --------------------------------------------------------------- */
-    /* 1. Map each node index → its 3 × 3 stick block [start, end]     */
-    /* --------------------------------------------------------------- */
-    auto stickRange = [this](int nodeIdx, int& start, int& end)
-    {
-        GetStickIndices(nodeIdx, start, end);      // inclusive ends
-    };
-
-    int n1Start{}, n1End{};
-    int n2Start{}, n2End{};
-    stickRange(node1Index, n1Start, n1End);
-    stickRange(node2Index, n2Start, n2End);
-
-    /* --------------------------------------------------------------- */
-    /* 2. Helpers                                                      */
-    /* --------------------------------------------------------------- */
-
-    /* Write 'x', '+' or '-', but allow a sign to overwrite any 'x'.   */
-    auto writeCell = [this](int r, int c, const std::string& v)
-    {
-        if (data_[r][c] == "0" || (v != "x" && data_[r][c] == "x"))
-            data_[r][c] = v;
-    };
-
-    /* Blanket-fill both rectangles (A×B and B×A) with 'x'.            */
-    auto fillRectsWithX = [&](int aStart, int aEnd, int bStart, int bEnd)
-    {
-        for (int r = aStart; r <= aEnd; ++r)
-            for (int c = bStart; c <= bEnd; ++c)
-            {
-                writeCell(r, c, "x");   // A × B
-                writeCell(c, r, "x");   // B × A (mirror)
-            }
-    };
-
-    /* --------------------------------------------------------------- */
-    /* 3. Work out the link type                                       */
-    /* --------------------------------------------------------------- */
-    const bool n1IsMid = (node1Location == Location::M);
-    const bool n2IsMid = (node2Location == Location::M);
-
-    /* ---------- CASE A : End–End  OR  Mid–Mid  --------------------- */
-    if (n1IsMid == n2IsMid)          // both true  OR  both false
-    {
-        fillRectsWithX(n1Start, n1End, n2Start, n2End);
-        return;
-    }
-
-    /* ---------- CASE B : Mid–End  ---------------------------------- */
-
-    /* Identify which block is End, which is Mid — independent of the
-       row/column orientation.                                         */
-    int endStart, endEnd, midStart, midEnd;
-
-    if (n1IsMid) {                 /* node1 = Mid, node2 = End */
-        midStart = n1Start;  midEnd = n1End;
-        endStart = n2Start;  endEnd = n2End;
-    } else {                       /* node1 = End, node2 = Mid */
-        endStart = n1Start;  endEnd = n1End;
-        midStart = n2Start;  midEnd = n2End;
-    }
-
-    const int endCentre = endStart + 1;        // centre row & col of End block
-    const int midCentre = midStart + 1;        // centre row & col of Mid block
-
-    const std::string  signStr        (1,  userSign);
-    const std::string  inverseSignStr (1, (userSign == '+') ? '-' : '+');
-
-    /* 3·1  blanket pass — fill everything with 'x' first ------------- */
-    fillRectsWithX(midStart, midEnd, endStart, endEnd);
-
-    /* 3·2  overwrite the four sign cells ----------------------------- */
-
-    /* Horizontal user-sign in End block (centre ROW of End, at the
-       left & right ends of the Mid block’s columns).                  */
-    writeCell(endCentre, midStart, signStr);   // left  '+'
-    writeCell(endCentre, midEnd,   signStr);   // right '+'
-
-    /* Vertical inverse-sign in Mid block (centre COL of End, at the
-       top & bottom of the Mid block’s rows).                          */
-    writeCell(midStart, endCentre, inverseSignStr);  // top    '-'
-    writeCell(midEnd,   endCentre, inverseSignStr);  // bottom '-'
+    cin.clear();
+    cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+    cout << "Invalid input. Please enter an integer.\n";
 }
 
+int Matrix::promptStickCount() const
+{
+    int n;
+    while (true)
+    {
+        cout << "Enter number of sticks (>=4): ";
+        cin >> n;
+        if (cin.fail())           { flushBadInput(); continue; }
+        if (n < 4)                { cout << "Must be 4 or more.\n"; continue; }
+        return n;
+    }
+}
 
+int Matrix::promptNodeIndex(const char* label) const
+{
+    int idx;
+    while (true)
+    {
+        cout << label << " (1-" << matrixSize_ << "): ";
+        cin >> idx;
+        if (cin.fail())           { flushBadInput(); continue; }
+        if (idx < 1 || idx > matrixSize_)
+            { cout << "Out of range.\n"; continue; }
+        return idx;
+    }
+}
 
+char Matrix::promptSign() const
+{
+    char s;
+    while (true)
+    {
+        cout << "Enter operation ('+' or '-'): ";
+        cin >> s;
+        if (s == '+' || s == '-') return s;
+        cout << "Invalid; expect + or -.\n";
+    }
+}
 
+/* ───────────────── low-level cell ops ──────────────────────────────── */
 
+void Matrix::applyDirectedSign(int i, int j, char sign)
+{
+    data_[i][j] = (sign == '+') ? "1"  : "-1";
+    data_[j][i] = (sign == '+') ? "-1" : "1";
+}
 
-void Matrix::GetStickIndices(int num, int& start, int& end) {
-    start = ((((num) / 3) + 1) * 3) - 3;
-    end = ((((num) / 3) + 1) * 3) - 1;
+bool Matrix::isWritable(int i, int j) const
+{
+    const string& cur = data_[i][j];
+    if (cur == "0" || cur == "+" || cur == "-") return true;
+    cout << "Invalid: target cell is occupied.\n";
+    return false;
+}
+
+void Matrix::writeCell(int r, int c, const string& v)
+{
+    if (data_[r][c] == "0" || (v != "x" && data_[r][c] == "x"))
+        data_[r][c] = v;
+}
+
+/* ───────────────── stick helpers ───────────────────────────────────── */
+
+std::pair<int,int> Matrix::stickBlock(int idx) const
+{
+    int s = (idx / 3) * 3;                   // inclusive [s, s+2]
+    return {s, s + 2};
+}
+
+void Matrix::initialiseStaticPattern()
+{
+    for (int b = 0; b < matrixSize_; b += 3)
+    {
+        data_[b][b]         = "x";
+        data_[b+1][b+1]     = "x";
+        data_[b+2][b+2]     = "x";
+        data_[b][b+2]       = "x";
+        data_[b+2][b]       = "x";
+
+        data_[b+1][b]       = "2";
+        data_[b][b+1]       = "2";
+        data_[b+1][b+2]     = "2";
+        data_[b+2][b+1]     = "2";
+    }
+}
+
+Matrix::Location Matrix::locationOf(int idx) const
+{
+    switch (idx % 3)
+    {
+        case 0:  return Location::E1;  // 0,3,6…
+        case 1:  return Location::M;   // 1,4,7…
+        default: return Location::E2;  // 2,5,8…
+    }
+}
+
+void Matrix::assignLocations(int n1, Location& l1,
+                             int n2, Location& l2) const
+{
+    l1 = locationOf(n1);
+    l2 = locationOf(n2);
+}
+
+/* ───────────────── rule engine ─────────────────────────────────────── */
+
+void Matrix::applyEdgeTypeRules(Location l1, Location l2,
+                                int n1, int n2, char userSign)
+{
+    /* 1. block ranges */
+    auto [rS, rE] = stickBlock(n1);          // node1 rows
+    auto [cS, cE] = stickBlock(n2);          // node2 cols
+
+    /* 2. blanket ‘x’ fill */
+    for (int r = rS; r <= rE; ++r)
+        for (int c = cS; c <= cE; ++c)
+        {
+            writeCell(r, c, "x");
+            writeCell(c, r, "x");            // mirror
+        }
+
+    /* 3. stop early for EE / MM */
+    if (connectionType(l1, l2) != Connection::ME) return;
+
+    /* 4. Mid ↔ End special signs */
+    const bool endOnRows = (l1 != Location::M);     // true if node1 is END
+    int midS, midE, midC;
+    int endS, endE, endC;
+
+    if (endOnRows) {
+        endS = rS; endE = rE; endC = rS + 1;
+        midS = cS; midE = cE; midC = cS + 1;
+    } else {
+        midS = rS; midE = rE; midC = rS + 1;
+        endS = cS; endE = cE; endC = cS + 1;
+    }
+
+    const string usr(1, userSign);
+    const string inv(1, (userSign == '+') ? '-' : '+');
+
+    writeCell(endC, midS, usr);          // horizontal pair
+    writeCell(endC, midE, usr);
+
+    writeCell(midS, endC, inv);          // vertical pair
+    writeCell(midE, endC, inv);
+}
+
+/* ───────────────── connection helper ───────────────────────────────── */
+
+ /******************************************************************************
+  *  connectionType — classify two Locations as EE / MM / ME
+  ******************************************************************************/
+Matrix::Connection Matrix::connectionType(Location a, Location b)
+{
+    const bool aMid = (a == Location::M);
+    const bool bMid = (b == Location::M);
+
+    if ( aMid &&  bMid) return Connection::MM;
+    if (!aMid && !bMid) return Connection::EE;
+    return Connection::ME;               // exactly one Middle
+}
+
+/* ───────────────── isFull query ────────────────────────────────────── */
+bool Matrix::isFull() const
+{
+    for (const auto& row : data_)
+        for (const auto& cell : row)
+            if (cell == "0" || cell == "+" || cell == "-") return false;
+    return true;
 }

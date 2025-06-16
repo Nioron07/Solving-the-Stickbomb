@@ -1,19 +1,30 @@
-#include "matrix.hpp"
+/******************************************************************************
+ *  main.cpp  —  demo driver for the stick-bomb Matrix class
+ *
+ *  • Builds a Matrix (user is prompted for stick count).
+ *  • Prints the initial scaffold.
+ *  • Repeatedly asks the user for connections until the matrix is full.
+ ******************************************************************************/
 
-int main() {
-    Matrix m;
+#include "Matrix.hpp"
+#include <iostream>
 
-    // Print the initial matrix
-    m.print();
-    while (!m.CheckIfFull()) {
-    // Call updateMatrix to allow user to modify the matrix
-    m.updateMatrix();
+int main()
+{
+    Matrix matrix;           // user is asked for stick count in the ctor
 
-    // Print the updated matrix
-    m.print();
+    std::cout << "\nInitial matrix:\n";
+    matrix.print();
+
+    while (!matrix.isFull())
+    {
+        std::cout << "\nAdd a connection\n";
+        matrix.updateMatrix();
+
+        std::cout << "\nCurrent matrix:\n";
+        matrix.print();
     }
 
+    std::cout << "\n🎉  Matrix is completely filled.  Goodbye!\n";
     return 0;
 }
-
-

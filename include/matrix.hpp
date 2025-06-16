@@ -1,41 +1,96 @@
 #pragma once
+/******************************************************************************
+ *  Matrix.hpp  —  public interface for the “stick-bomb” matrix
+ *
+ *  A project consists of N “sticks”, each rendered as a 3 × 3 sub-matrix:
+ *
+ *        E1  M  E2
+ *        E1  M  E2
+ *        E1  M  E2
+ *
+ *  Interactive connections placed by the user propagate into these blocks
+ *  according to simple, deterministic rules (see Matrix.cpp).
+ *
+ *  Only the high-level API is exposed here.  Implementation details and all
+ *  helper logic live in the .cpp file.
+ ******************************************************************************/
 
 #include <vector>
 #include <string>
+#include <utility>      // std::pair
 
-class Matrix {
+class Matrix
+{
 public:
-    enum class Location {
-        E1,  // "E1"
-        M,   // "M"
-        E2   // "E2"
+    /* ────────────────────────────────────────────────────────────────── */
+    /*  Node location within a 3 × 3 stick block                         */
+    /* ────────────────────────────────────────────────────────────────── */
+    enum class Location { E1, M, E2 };
+
+    /* ────────────────────────────────────────────────────────────────── */
+    /*  Connection type between *two* nodes                              */
+    /* ────────────────────────────────────────────────────────────────── */
+    enum class Connection {
+        EE,   ///< End ↔ End        (E1/E2  with  E1/E2)
+        MM,   ///< Mid ↔ Mid        (M      with  M)
+        ME    ///< Mid ↔ End (or End ↔ Mid) — exactly one node is Mid
     };
 
-    int n_;
-    std::vector<std::vector<std::string>> data_;  // Use string matrix to store '-1' or '-'
+    /// Helper that returns EE / MM / ME for a pair of Locations.
+    static Connection connectionType(Location lhs, Location rhs);
+
+    /* ────────────────────────────────────────────────────────────────── */
+    /*  Construction & user interaction                                  */
+    /* ────────────────────────────────────────────────────────────────── */
+    Matrix();                 ///< Prompt for stick count and build matrix
+    void updateMatrix();      ///< Ask user for a connection and apply it
+    void print() const;       ///< Pretty-print coloured matrix to stdout
+
+    /* Inline validator (used by updateMatrix) */
+    void checkSignBounding(char userSign,
+                           int first, int second,
+                           bool& flagOut);
+
+    /* ────────────────────────────────────────────────────────────────── */
+    /*  State queries                                                    */
+    /* ────────────────────────────────────────────────────────────────── */
+    bool isFull() const;      ///< True if no "0" cells remain
 
 private:
-    // Assigns node locations
-    void AssignNodeLocations(int num1, Matrix::Location &num1_loc, int num2, Matrix::Location &num2_loc);
+    /* ────────────────────────────────────────────────────────────────── */
+    /*  Internal data                                                    */
+    /* ────────────────────────────────────────────────────────────────── */
+    int matrixSize_{0};                                       ///< side length
+    std::vector<std::vector<std::string>> data_;              ///< cell text
 
-    // Handles rules regarding the specific edge type
-    void EdgeTypeRules(Location n1, Location n2, int num1, int num2, char sign);
+    /* ────────────────────────────────────────────────────────────────── */
+    /*  Console / input helpers                                          */
+    /* ────────────────────────────────────────────────────────────────── */
+    static void clearConsole();           ///< blank-line separator
+    static void flushBadInput();          ///< reset std::cin
+    int  promptStickCount() const;        ///< ask for N (≥ 4)
+    int  promptNodeIndex(const char*) const;
+    char promptSign() const;              ///< ask for '+' or '-'
 
-    // Gets the stick number (batch of numbers) that the node belongs to
-    void GetStickIndices(int num, int& start, int& end);
-public:
-    // Constructor: prompts user for dimension (must be ≥12 and divisible by 3)
-    Matrix();
+    /* ────────────────────────────────────────────────────────────────── */
+    /*  Low-level cell manipulation                                      */
+    /* ────────────────────────────────────────────────────────────────── */
+    void writeCell(int row, int col, const std::string& value);
+    void applyDirectedSign(int from, int to, char sign);
+    bool isWritable(int from, int to) const;
 
-    // Clears console
-    void Clear() { system("cls"); }
-    
-    // Check if matrix is full (no "0"s left)
-    bool CheckIfFull();
+    /* ────────────────────────────────────────────────────────────────── */
+    /*  Stick / node helpers                                             */
+    /* ────────────────────────────────────────────────────────────────── */
+    std::pair<int,int> stickBlock(int nodeIdx) const; ///< return [start,end]
+    void  initialiseStaticPattern();                  ///< diag scaffold
+    Location locationOf(int nodeIdx) const;           ///< map to E1/M/E2
+    void assignLocations(int n1, Location& l1,
+                         int n2, Location& l2) const;
 
-    // New function to update matrix with user input
-    void updateMatrix();
-
-    // Print the matrix to console
-    void print() const;
+    /* ────────────────────────────────────────────────────────────────── */
+    /*  Rule engine                                                      */
+    /* ────────────────────────────────────────────────────────────────── */
+    void applyEdgeTypeRules(Location loc1, Location loc2,
+                            int node1, int node2, char userSign);
 };
