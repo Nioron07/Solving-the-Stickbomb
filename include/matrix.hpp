@@ -19,7 +19,7 @@ private:
     void AssignNodeLocations(int num1, Matrix::Location &num1_loc, int num2, Matrix::Location &num2_loc);
 
     // Handles rules regarding the specific edge type
-    void EdgeTypeRules(Location n1, Location n2, int num1, int num2);
+    void EdgeTypeRules(Location n1, Location n2, int num1, int num2, char sign);
 
     // Gets the stick number (batch of numbers) that the node belongs to
     void GetStickIndices(int num, int& start, int& end);

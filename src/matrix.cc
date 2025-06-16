@@ -78,7 +78,7 @@ void Matrix::updateMatrix() {
     num2 -= 1;
 
     // Ensure the numbers are within bounds
-    if (num1 < 0 || num1 >= n_ || num2 < 0 || num2 >= n_ || data_[num1][num2] != "0") {
+    if (num1 < 0 || num1 >= n_ || num2 < 0 || num2 >= n_ || (data_[num1][num2] != "0" && data_[num1][num2] != "-" && data_[num1][num2] != "+")) {
         Clear();
         std::cout << "Invalid connection" << std::endl;
         return;
@@ -87,20 +87,20 @@ void Matrix::updateMatrix() {
     std::cin >> op;
 
     // Update the matrix based on the operation
-    if (op == '+') {
+    if (op == '+' && (data_[num1][num2] != "-")) {
         data_[num1][num2] = "1";  // Place 1 as "1"
         data_[num2][num1] = "-1";   // Place -1 as "-1"
-    } else if (op == '-') {
+    } else if (op == '-'  && (data_[num1][num2] != "+")) {
         data_[num1][num2] = "-1";   // Place -1 as "-1"
         data_[num2][num1] = "1";  // Place 1 as "1"
     } else {
         Clear();
-        std::cout << "Invalid operation. Use '+' or '-' only." << std::endl;
+        std::cout << "Invalid operation. Use '+' or '-' only and the sign must match the required sign." << std::endl;
         return;
     }
 
     // Replace zeros in both the rows and columns of the specified numbers with '-'
-    EdgeTypeRules(num1_loc, num2_loc, num1, num2);
+    EdgeTypeRules(num1_loc, num2_loc, num1, num2, op);
 }
 
 void Matrix::AssignNodeLocations(int num1, Matrix::Location &num1_loc, int num2, Matrix::Location &num2_loc)
@@ -166,49 +166,116 @@ void Matrix::print() const
 
 
 
-void Matrix::EdgeTypeRules(Location n1, Location n2, int num1, int num2) {
-    if ((n1 == Location::E1 && n2 == Location::E1) || (n1 == Location::E2 && n2 == Location::E1) || (n1 == Location::E1 && n2 == Location::E2) || (n1 == Location::E2 && n2 == Location::E2)) {
-        // End to End connection
-        int num1_start;
-        int num1_end;
-        GetStickIndices(num1, num1_start, num1_end);
+/**************************************************************************
+ * Matrix::EdgeTypeRules
+ * ---------------------
+ * Update the adjacency matrix `data_` after the user joins two “sticks”.
+ *
+ *  ❶ End ↔ End   or   Mid ↔ Mid
+ *     • Every untouched cell in the two 3 × 3 rectangles becomes "x".
+ *
+ *  ❷ Mid ↔ End   (exactly one side is “M”)
+ *     • First blanket-fill the two rectangles with 'x'.
+ *     • Then add four signs:
+ *         – The **End-stick** block gets a horizontal pair of the
+ *           *user* sign (`+` or `-`).
+ *         – The **Mid-stick** block gets a vertical pair of the
+ *           *inverse* sign.
+ **************************************************************************/
+void Matrix::EdgeTypeRules(Location  node1Location,
+                           Location  node2Location,
+                           int       node1Index,
+                           int       node2Index,
+                           char      userSign)
+{
+    /* --------------------------------------------------------------- */
+    /* 1. Map each node index → its 3 × 3 stick block [start, end]     */
+    /* --------------------------------------------------------------- */
+    auto stickRange = [this](int nodeIdx, int& start, int& end)
+    {
+        GetStickIndices(nodeIdx, start, end);      // inclusive ends
+    };
 
-        int num2_start;
-        int num2_end;
-        GetStickIndices(num2, num2_start, num2_end);
+    int n1Start{}, n1End{};
+    int n2Start{}, n2End{};
+    stickRange(node1Index, n1Start, n1End);
+    stickRange(node2Index, n2Start, n2End);
 
-        for (int i = num1_start; i <= num1_end; i++) {
-            for (int j = num2_start; j <= num2_end; j++) {
-                if (data_[i][j] == "0") {
-                    data_[i][j] = "x";
-                }                
-                if (data_[j][i] == "0") {
-                    data_[j][i] = "x";
-                }
+    /* --------------------------------------------------------------- */
+    /* 2. Helpers                                                      */
+    /* --------------------------------------------------------------- */
+
+    /* Write 'x', '+' or '-', but allow a sign to overwrite any 'x'.   */
+    auto writeCell = [this](int r, int c, const std::string& v)
+    {
+        if (data_[r][c] == "0" || (v != "x" && data_[r][c] == "x"))
+            data_[r][c] = v;
+    };
+
+    /* Blanket-fill both rectangles (A×B and B×A) with 'x'.            */
+    auto fillRectsWithX = [&](int aStart, int aEnd, int bStart, int bEnd)
+    {
+        for (int r = aStart; r <= aEnd; ++r)
+            for (int c = bStart; c <= bEnd; ++c)
+            {
+                writeCell(r, c, "x");   // A × B
+                writeCell(c, r, "x");   // B × A (mirror)
             }
-        }
-    } else if (n1 == Location::M && n2 == Location::M) {
-        // Middle to Middle Connection 
-                int num1_start;
-        int num1_end;
-        GetStickIndices(num1, num1_start, num1_end);
+    };
 
-        int num2_start;
-        int num2_end;
-        GetStickIndices(num2, num2_start, num2_end);
+    /* --------------------------------------------------------------- */
+    /* 3. Work out the link type                                       */
+    /* --------------------------------------------------------------- */
+    const bool n1IsMid = (node1Location == Location::M);
+    const bool n2IsMid = (node2Location == Location::M);
 
-        for (int i = num1_start; i <= num1_end; i++) {
-            for (int j = num2_start; j <= num2_end; j++) {
-                if (data_[i][j] == "0") {
-                    data_[i][j] = "x";
-                }                
-                if (data_[j][i] == "0") {
-                    data_[j][i] = "x";
-                }
-            }
-        }
+    /* ---------- CASE A : End–End  OR  Mid–Mid  --------------------- */
+    if (n1IsMid == n2IsMid)          // both true  OR  both false
+    {
+        fillRectsWithX(n1Start, n1End, n2Start, n2End);
+        return;
     }
+
+    /* ---------- CASE B : Mid–End  ---------------------------------- */
+
+    /* Identify which block is End, which is Mid — independent of the
+       row/column orientation.                                         */
+    int endStart, endEnd, midStart, midEnd;
+
+    if (n1IsMid) {                 /* node1 = Mid, node2 = End */
+        midStart = n1Start;  midEnd = n1End;
+        endStart = n2Start;  endEnd = n2End;
+    } else {                       /* node1 = End, node2 = Mid */
+        endStart = n1Start;  endEnd = n1End;
+        midStart = n2Start;  midEnd = n2End;
+    }
+
+    const int endCentre = endStart + 1;        // centre row & col of End block
+    const int midCentre = midStart + 1;        // centre row & col of Mid block
+
+    const std::string  signStr        (1,  userSign);
+    const std::string  inverseSignStr (1, (userSign == '+') ? '-' : '+');
+
+    /* 3·1  blanket pass — fill everything with 'x' first ------------- */
+    fillRectsWithX(midStart, midEnd, endStart, endEnd);
+
+    /* 3·2  overwrite the four sign cells ----------------------------- */
+
+    /* Horizontal user-sign in End block (centre ROW of End, at the
+       left & right ends of the Mid block’s columns).                  */
+    writeCell(endCentre, midStart, signStr);   // left  '+'
+    writeCell(endCentre, midEnd,   signStr);   // right '+'
+
+    /* Vertical inverse-sign in Mid block (centre COL of End, at the
+       top & bottom of the Mid block’s rows).                          */
+    writeCell(midStart, endCentre, inverseSignStr);  // top    '-'
+    writeCell(midEnd,   endCentre, inverseSignStr);  // bottom '-'
 }
+
+
+
+
+
 
 void Matrix::GetStickIndices(int num, int& start, int& end) {
     start = ((((num) / 3) + 1) * 3) - 3;
