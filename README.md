@@ -16,11 +16,11 @@ Each stick is internally represented as three nodes (two ends and one middle). T
 - `"0"`: No connection yet
 - `"1"` / `"-1"`: User-defined directed connection
 - `"2"`: Internal structure marker
-- `"-"`: Connection disallowed due to internal logic or invalid combinations
+- `"x"`: Connection disallowed due to internal logic or invalid combinations
 
 As the user builds connections, the matrix:
 - Records the new connection with a `"1"` and its opposite as `"-1"`
-- Eliminates all other conflicting or now-impossible connections by setting them to `"-"`
+- Eliminates all other conflicting or now-impossible connections by setting them to `"x"`
 
 ## How to Use
 
@@ -46,7 +46,7 @@ As the user builds connections, the matrix:
    After each valid connection, the matrix is automatically updated and printed. Each cell tells you:
    - `"0"`: Still available
    - `"1"` / `"-1"`: Connected (directional)
-   - `"-"`: Blocked connection
+   - `"x"`: Blocked connection
 
 4. **Repeat Until Complete**
 
@@ -69,9 +69,9 @@ The matrix is printed after each connection, showing which nodes are connected, 
 
 ```
      1   2   3   4   5   6 ...
- 1 | -   2   -   0   0   0 ...
- 2 | 2   -   2   0   0   0 ...
- 3 | -   2   -   0   0   0 ...
+ 1 | x   2   x   0   0   0 ...
+ 2 | 2   x   2   0   0   0 ...
+ 3 | x   2   x   0   0   0 ...
 ...
 ```
 
