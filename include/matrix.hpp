@@ -94,4 +94,6 @@ private:
     /* ────────────────────────────────────────────────────────────────── */
     void applyEdgeTypeRules(Location loc1, Location loc2,
                             int node1, int node2, char userSign);
+    void applyMultiConnectionRules(Location loc1, Location loc2,
+                            int node1, int node2, char userSign);
 };
