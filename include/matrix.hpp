@@ -100,5 +100,4 @@ private:
     void checkAndEnforceTransitiveConnections(int source_node_idx, int newly_connected_node_idx);
     std::vector<Node*> getNodeConnections(int node_idx);
     void enforceConnection(int stick1_id, int stick2_id, Connection type);
-    void invalidatePartialOverlap(int middle_node_idx);
 };

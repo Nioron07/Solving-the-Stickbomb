@@ -125,14 +125,6 @@ void Matrix::applyEdgeTypeRules(Location loc1, Location loc2,
 void Matrix::applyMultiConnectionRules(int node1_idx, int node2_idx, Location loc1, Location loc2) {
     checkAndEnforceTransitiveConnections(node1_idx, node2_idx);
     checkAndEnforceTransitiveConnections(node2_idx, node1_idx);
-
-    // Check if a new connection invalidates a previous partial overlap
-    if (loc1 == Location::M) {
-        invalidatePartialOverlap(node1_idx);
-    }
-    if (loc2 == Location::M) {
-        invalidatePartialOverlap(node2_idx);
-    }
 }
 
 void Matrix::checkAndEnforceTransitiveConnections(int source_node_idx, int newly_connected_node_idx) {
@@ -405,27 +397,4 @@ bool Matrix::isFull() const
 Stick& Matrix::getStickFromNode(int nodeNumber) {
     int stickId = nodeNumber / 3;
     return sticks_[stickId];
-}
-
-void Matrix::invalidatePartialOverlap(int middle_node_idx) {
-    vector<Node*> neighbors = getNodeConnections(middle_node_idx);
-    if (neighbors.size() < 2) return; // Need at least two connections to invalidate anything
-
-    // Find all previous M-E connections from this middle node
-    for (Node* neighbor : neighbors) {
-        if (locationOf(neighbor->getId()) == Location::E1 || locationOf(neighbor->getId()) == Location::E2) {
-            // This neighbor was part of a previous M-E connection.
-            // We need to find the sign bounds associated with *that* connection and 'x' them out.
-            int end_stick_id = neighbor->getId() / 3;
-            auto [end_rS, end_rE] = stickBlock(end_stick_id * 3);
-            auto [mid_cS, mid_cE] = stickBlock(middle_node_idx * 3);
-
-            // The middle node of the 'end' stick is at end_rS + 1
-            // Check cells related to the middle of the 'end' stick
-             if (data_[end_rS + 1][mid_cS] == "+" || data_[end_rS + 1][mid_cS] == "-") writeCell(end_rS + 1, mid_cS, "x");
-             if (data_[end_rS + 1][mid_cE] == "+" || data_[end_rS + 1][mid_cE] == "-") writeCell(end_rS + 1, mid_cE, "x");
-             if (data_[mid_cS][end_rS + 1] == "+" || data_[mid_cS][end_rS + 1] == "-") writeCell(mid_cS, end_rS + 1, "x");
-             if (data_[mid_cE][end_rS + 1] == "+" || data_[mid_cE][end_rS + 1] == "-") writeCell(mid_cE, end_rS + 1, "x");
-        }
-    }
 }
