@@ -17,3 +17,13 @@ int Node::getTension() const {
 void Node::setTension(int tension) {
     tension_ = tension;
 }
+
+// --- New Method Implementations ---
+
+void Node::addConnection(Node* node) {
+    adjacent_nodes_.insert(node);
+}
+
+const std::set<Node*>& Node::getConnections() const {
+    return adjacent_nodes_;
+}

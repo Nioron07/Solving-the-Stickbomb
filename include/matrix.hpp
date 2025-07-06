@@ -1,18 +1,18 @@
 #pragma once
 /******************************************************************************
- *  Matrix.hpp  —  public interface for the “stick-bomb” matrix
+ * Matrix.hpp  —  public interface for the “stick-bomb” matrix
  *
- *  A project consists of N “sticks”, each rendered as a 3 × 3 sub-matrix:
+ * A project consists of N “sticks”, each rendered as a 3 × 3 sub-matrix:
  *
- *        E1  M  E2
- *        E1  M  E2
- *        E1  M  E2
+ * E1  M  E2
+ * E1  M  E2
+ * E1  M  E2
  *
- *  Interactive connections placed by the user propagate into these blocks
- *  according to simple, deterministic rules (see Matrix.cpp).
+ * Interactive connections placed by the user propagate into these blocks
+ * according to simple, deterministic rules (see Matrix.cpp).
  *
- *  Only the high-level API is exposed here.  Implementation details and all
- *  helper logic live in the .cpp file.
+ * Only the high-level API is exposed here.  Implementation details and all
+ * helper logic live in the .cpp file.
  ******************************************************************************/
 
 #include <vector>
@@ -24,12 +24,12 @@ class Matrix
 {
 public:
     /* ────────────────────────────────────────────────────────────────── */
-    /*  Node location within a 3 × 3 stick block                         */
+    /* Node location within a 3 × 3 stick block                         */
     /* ────────────────────────────────────────────────────────────────── */
     enum class Location { E1, M, E2 };
 
     /* ────────────────────────────────────────────────────────────────── */
-    /*  Connection type between *two* nodes                              */
+    /* Connection type between *two* nodes                              */
     /* ────────────────────────────────────────────────────────────────── */
     enum class Connection {
         EE,   ///< End ↔ End        (E1/E2  with  E1/E2)
@@ -41,7 +41,7 @@ public:
     static Connection connectionType(Location lhs, Location rhs);
 
     /* ────────────────────────────────────────────────────────────────── */
-    /*  Construction & user interaction                                  */
+    /* Construction & user interaction                                  */
     /* ────────────────────────────────────────────────────────────────── */
     Matrix();
     void updateMatrix();
@@ -56,7 +56,7 @@ public:
 
 private:
     /* ────────────────────────────────────────────────────────────────── */
-    /*  Internal data                                                    */
+    /* Internal data                                                    */
     /* ────────────────────────────────────────────────────────────────── */
     int matrixSize_{0};
     std::vector<std::vector<std::string>> data_;
@@ -64,7 +64,7 @@ private:
     std::vector<Stick> sticks_; // Add a vector of sticks
 
     /* ────────────────────────────────────────────────────────────────── */
-    /*  Console / input helpers                                          */
+    /* Console / input helpers                                          */
     /* ────────────────────────────────────────────────────────────────── */
     static void clearConsole();           ///< blank-line separator
     static void flushBadInput();          ///< reset std::cin
@@ -73,14 +73,14 @@ private:
     char promptSign() const;              ///< ask for '+' or '-'
 
     /* ────────────────────────────────────────────────────────────────── */
-    /*  Low-level cell manipulation                                      */
+    /* Low-level cell manipulation                                      */
     /* ────────────────────────────────────────────────────────────────── */
     void writeCell(int row, int col, const std::string& value);
     void applyDirectedSign(int from, int to, char sign);
     bool isWritable(int from, int to) const;
 
     /* ────────────────────────────────────────────────────────────────── */
-    /*  Stick / node helpers                                             */
+    /* Stick / node helpers                                             */
     /* ────────────────────────────────────────────────────────────────── */
     std::pair<int,int> stickBlock(int nodeIdx) const; ///< return [start,end]
     void  initialiseStaticPattern();                  ///< diag scaffold
@@ -88,11 +88,17 @@ private:
     void assignLocations(int n1, Location& l1,
                          int n2, Location& l2) const;
 
-    /* ────────────────────────────────────────────────────────────────── */
-    /*  Rule engine                                                      */
+     /* ────────────────────────────────────────────────────────────────── */
+    /* Rule Engine & Helpers                                            */
     /* ────────────────────────────────────────────────────────────────── */
     void applyEdgeTypeRules(Location loc1, Location loc2,
-                            int node1, int node2, char userSign);
-    void applyMultiConnectionRules(Location loc1, Location loc2,
-                            int node1, int node2, char userSign);
+                            int node1_idx, int node2_idx, char userSign);
+                            
+    void applyMultiConnectionRules(int node1_idx, int node2_idx, Location loc1, Location loc2);
+    void applyConnectionLimit(Node& node1, Node& node2);
+    // --- New General Helper Functions ---
+    void checkAndEnforceTransitiveConnections(int source_node_idx, int newly_connected_node_idx);
+    std::vector<Node*> getNodeConnections(int node_idx);
+    void enforceConnection(int stick1_id, int stick2_id, Connection type);
+    void invalidatePartialOverlap(int middle_node_idx);
 };

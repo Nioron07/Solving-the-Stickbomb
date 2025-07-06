@@ -62,3 +62,6 @@ int Stick::getConnectionCount(int adjacent_stick_id) const {
     }
     return 0;
 }
+const std::map<int, int>& Stick::getAdjacentSticks() const {
+    return adjacent_sticks_;
+}

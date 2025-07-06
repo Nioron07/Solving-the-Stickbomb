@@ -18,6 +18,7 @@ public:
     // --- New Methods for Adjacency Tracking ---
     void addConnection(int adjacent_stick_id);
     int getConnectionCount(int adjacent_stick_id) const;
+    const std::map<int, int>& getAdjacentSticks() const;
 
 
 private:

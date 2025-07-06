@@ -7,6 +7,8 @@
 #include <iostream>
 #include <limits>
 #include <vector>
+#include <algorithm>
+#include <map>
 
 /* shorten namespace noise */
 using std::cin;
@@ -62,10 +64,16 @@ void Matrix::updateMatrix()
 
     Node& node1_obj = stick1.getNodeByIndex(first_idx % 3);
     Node& node2_obj = stick2.getNodeByIndex(second_idx % 3);
+    
     node1_obj.setTension((userSign == '+') ? 1 : -1);
     node2_obj.setTension((userSign == '+') ? -1 : 1);
+    
+    node1_obj.addConnection(&node2_obj);
+    node2_obj.addConnection(&node1_obj);
 
     applyEdgeTypeRules(locFirst, locSecond, first_idx, second_idx, userSign);
+    applyMultiConnectionRules(first_idx, second_idx, locFirst, locSecond);
+    applyConnectionLimit(node1_obj, node2_obj);
 
     cout << "Number of moves eliminated: " << num_connecs_elim_;
 }
@@ -77,21 +85,15 @@ void Matrix::applyEdgeTypeRules(Location loc1, Location loc2,
 {
     Stick& stick1 = getStickFromNode(node1_idx);
     Stick& stick2 = getStickFromNode(node2_idx);
-    auto [rS, rE] = stickBlock(node1_idx);
-    auto [cS, cE] = stickBlock(node2_idx);
-
+    
     int count = stick1.getConnectionCount(stick2.getId());
 
     if (count >= 2) {
-        // --- SECOND (OR MORE) CONNECTION: LOCKDOWN ---
-        for (int r = rS; r <= rE; ++r) {
-            for (int c = cS; c <= cE; ++c) {
-                if (data_[r][c] != "1" && data_[r][c] != "-1") writeCell(r, c, "x");
-                if (data_[c][r] != "1" && data_[c][r] != "-1") writeCell(c, r, "x");
-            }
-        }
-    } else { // count == 1
-        // --- FIRST CONNECTION ---
+        enforceConnection(stick1.getId(), stick2.getId(), Connection::EE);
+    } else { 
+        auto [rS, rE] = stickBlock(node1_idx);
+        auto [cS, cE] = stickBlock(node2_idx);
+
         for (int r = rS; r <= rE; ++r) {
             for (int c = cS; c <= cE; ++c) {
                 writeCell(r, c, "x");
@@ -105,16 +107,94 @@ void Matrix::applyEdgeTypeRules(Location loc1, Location loc2,
         if (connectionType(loc1, loc2) == Connection::ME) {
             const string usr_sign(1, userSign);
             const string inv_sign(1, (userSign == '+') ? '-' : '+');
-            if (loc1 != Location::M) { // node1 is End, node2 is Mid
+            if (loc1 != Location::M) { 
                 writeCell(rS + 1, cS, usr_sign);
                 writeCell(rS + 1, cE, usr_sign);
                 writeCell(cS, rS + 1, inv_sign);
                 writeCell(cE, rS + 1, inv_sign);
-            } else { // node1 is Mid, node2 is End
+            } else { 
                 writeCell(rS, cS + 1, usr_sign);
                 writeCell(rE, cS + 1, usr_sign);
                 writeCell(cS + 1, rS, inv_sign);
                 writeCell(cS + 1, rE, inv_sign);
+            }
+        }
+    }
+}
+
+void Matrix::applyMultiConnectionRules(int node1_idx, int node2_idx, Location loc1, Location loc2) {
+    checkAndEnforceTransitiveConnections(node1_idx, node2_idx);
+    checkAndEnforceTransitiveConnections(node2_idx, node1_idx);
+
+    // Check if a new connection invalidates a previous partial overlap
+    if (loc1 == Location::M) {
+        invalidatePartialOverlap(node1_idx);
+    }
+    if (loc2 == Location::M) {
+        invalidatePartialOverlap(node2_idx);
+    }
+}
+
+void Matrix::checkAndEnforceTransitiveConnections(int source_node_idx, int newly_connected_node_idx) {
+    Node& source_node = getStickFromNode(source_node_idx).getNodeByIndex(source_node_idx % 3);
+
+    vector<Node*> neighbors = getNodeConnections(source_node_idx);
+
+    if (neighbors.size() >= 2) {
+        for (size_t i = 0; i < neighbors.size(); ++i) {
+            for (size_t j = i + 1; j < neighbors.size(); ++j) {
+                int stick1_id = neighbors[i]->getId() / 3;
+                int stick2_id = neighbors[j]->getId() / 3;
+                enforceConnection(stick1_id, stick2_id, Connection::EE);
+            }
+        }
+    }
+}
+
+void Matrix::applyConnectionLimit(Node& node1, Node& node2) {
+    if (node1.getConnections().size() >= 2) {
+        int node_id = node1.getId();
+        for (unsigned i = 0; i < matrixSize_; i++) {
+            if (data_[node_id][i] != "1" && data_[node_id][i] != "-1") {
+                writeCell(node_id, i, "x");
+                writeCell(i, node_id, "x");
+            }
+        }
+    }
+    if (node2.getConnections().size() >= 2) {
+        int node_id = node2.getId();
+        for (unsigned i = 0; i < matrixSize_; i++) {
+             if (data_[node_id][i] != "1" && data_[node_id][i] != "-1") {
+                writeCell(node_id, i, "x");
+                writeCell(i, node_id, "x");
+            }
+        }
+    }
+}
+
+/* ───────────────── new general helpers ───────────────────────────────── */
+
+vector<Node*> Matrix::getNodeConnections(int node_idx) {
+    vector<Node*> connections;
+    for(int i = 0; i < matrixSize_; ++i) {
+        if(data_[node_idx][i] == "1" || data_[node_idx][i] == "-1") {
+            connections.push_back(&getStickFromNode(i).getNodeByIndex(i % 3));
+        }
+    }
+    return connections;
+}
+
+
+void Matrix::enforceConnection(int stick1_id, int stick2_id, Connection type) {
+    if (stick1_id == stick2_id) return;
+    auto [rS, rE] = stickBlock(stick1_id * 3);
+    auto [cS, cE] = stickBlock(stick2_id * 3);
+
+    if (type == Connection::EE) {
+        for (int r = rS; r <= rE; ++r) {
+            for (int c = cS; c <= cE; ++c) {
+                 if (data_[r][c] != "1" && data_[r][c] != "-1") writeCell(r, c, "x");
+                 if (data_[c][r] != "1" && data_[c][r] != "-1") writeCell(c, r, "x");
             }
         }
     }
@@ -130,11 +210,11 @@ void Matrix::writeCell(int r, int c, const string &val) {
 
     if (currentCell == "x" && (val == "+" || val == "-")) {
         currentCell = val;
-        num_connecs_elim_--; // Give back a move (x is 2 elims, +/- is 1)
+        num_connecs_elim_--; 
         return;
     }
     
-    if (currentCell == "x") return; // Otherwise, x is final
+    if (currentCell == "x") return;
 
     string originalState = currentCell;
     currentCell = val;
@@ -146,7 +226,6 @@ void Matrix::writeCell(int r, int c, const string &val) {
     }
 }
 
-
 void Matrix::applyDirectedSign(int i, int j, char sign)
 {
     writeCell(i, j, (sign == '+') ? "1" : "-1");
@@ -154,7 +233,6 @@ void Matrix::applyDirectedSign(int i, int j, char sign)
 }
 
 /* ───────────────────────── HELPERS (No Changes Below) ─────────────────────────────── */
-
 void Matrix::checkSignBounding(char sign, int i, int j, bool &flag)
 {
     flag = ((sign == '-' && data_[i][j] == "+") ||
@@ -324,12 +402,30 @@ bool Matrix::isFull() const
     return true;
 }
 
-void Matrix::applyMultiConnectionRules(Location loc1, Location loc2, int node1, int node2, char userSign)
-{
-    // This function is intentionally left blank.
-}
-
 Stick& Matrix::getStickFromNode(int nodeNumber) {
     int stickId = nodeNumber / 3;
     return sticks_[stickId];
+}
+
+void Matrix::invalidatePartialOverlap(int middle_node_idx) {
+    vector<Node*> neighbors = getNodeConnections(middle_node_idx);
+    if (neighbors.size() < 2) return; // Need at least two connections to invalidate anything
+
+    // Find all previous M-E connections from this middle node
+    for (Node* neighbor : neighbors) {
+        if (locationOf(neighbor->getId()) == Location::E1 || locationOf(neighbor->getId()) == Location::E2) {
+            // This neighbor was part of a previous M-E connection.
+            // We need to find the sign bounds associated with *that* connection and 'x' them out.
+            int end_stick_id = neighbor->getId() / 3;
+            auto [end_rS, end_rE] = stickBlock(end_stick_id * 3);
+            auto [mid_cS, mid_cE] = stickBlock(middle_node_idx * 3);
+
+            // The middle node of the 'end' stick is at end_rS + 1
+            // Check cells related to the middle of the 'end' stick
+             if (data_[end_rS + 1][mid_cS] == "+" || data_[end_rS + 1][mid_cS] == "-") writeCell(end_rS + 1, mid_cS, "x");
+             if (data_[end_rS + 1][mid_cE] == "+" || data_[end_rS + 1][mid_cE] == "-") writeCell(end_rS + 1, mid_cE, "x");
+             if (data_[mid_cS][end_rS + 1] == "+" || data_[mid_cS][end_rS + 1] == "-") writeCell(mid_cS, end_rS + 1, "x");
+             if (data_[mid_cE][end_rS + 1] == "+" || data_[mid_cE][end_rS + 1] == "-") writeCell(mid_cE, end_rS + 1, "x");
+        }
+    }
 }
