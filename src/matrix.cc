@@ -1,22 +1,12 @@
 /******************************************************************************
- *  Matrix.cpp  —  implementation of the stick-bomb matrix
- *
- *  Overview
- *  --------
- *  * A stick-bomb with N sticks builds a matrix of (N × 3)² cells.
- *  * Each stick is a 3 × 3 block whose nodes are labelled
- *      E1 | M | E2  (rows 0–2, cols 0–2).
- *  * The constructor lays down a static ‘x / 2’ diagonal scaffold.
- *  * Each user operation:
- *      1. asks for two node numbers and a sign (+/–)
- *      2. writes ±1 for the directed edge
- *      3. expands that edge into a pattern of x/+/– inside the two blocks.
+ * Matrix.cpp  —  implementation of the stick-bomb matrix
  ******************************************************************************/
 
 #include "matrix.hpp"
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <vector>
 
 /* shorten namespace noise */
 using std::cin;
@@ -33,12 +23,15 @@ using std::vector;
 Matrix::Matrix()
 {
     clearConsole();
-    int stickCount = promptStickCount(); // ask ≥ 4
+    int stickCount = promptStickCount();
 
-    matrixSize_ = stickCount * 3; // each stick → 3 rows/cols
+    matrixSize_ = stickCount * 3;
     data_.assign(matrixSize_, vector<string>(matrixSize_, "0"));
 
-    initialiseStaticPattern(); // scaffold
+    for (int i = 0; i < stickCount; ++i) {
+        sticks_.emplace_back(i);
+    }
+    initialiseStaticPattern();
 }
 
 /* ───────────────── public user interface ────────────────────────────── */
@@ -47,38 +40,121 @@ void Matrix::updateMatrix()
 {
     num_connecs_elim_ = 0;
 
-    /* 1. gather user input */
-    const int first = promptNodeIndex("Enter the first number") - 1; // 0-based
-    const int second = promptNodeIndex("Enter the second number") - 1;
+    const int first_idx = promptNodeIndex("Enter the first number") - 1;
+    const int second_idx = promptNodeIndex("Enter the second number") - 1;
     const char userSign = promptSign();
 
-    /* 2. quick bounds & occupancy check */
-    if (!isWritable(first, second))
-        return;
+    if (!isWritable(first_idx, second_idx)) return;
 
-    /* 3. sign-bounding sanity check */
     bool isError{};
-    checkSignBounding(userSign, first, second, isError);
-    if (isError)
-        return;
+    checkSignBounding(userSign, first_idx, second_idx, isError);
+    if (isError) return;
 
-    /* 4. classify node locations */
     Location locFirst, locSecond;
-    assignLocations(first, locFirst, second, locSecond);
+    assignLocations(first_idx, locFirst, second_idx, locSecond);
+    
+    Stick& stick1 = getStickFromNode(first_idx);
+    Stick& stick2 = getStickFromNode(second_idx);
+    stick1.addConnection(stick2.getId());
+    stick2.addConnection(stick1.getId());
 
-    /* 5. write ±1 for the directed edge */
-    applyDirectedSign(first, second, userSign);
+    applyDirectedSign(first_idx, second_idx, userSign);
 
-    /* 6. expand into the 3×3 stick blocks */
-    applyEdgeTypeRules(locFirst, locSecond, first, second, userSign);
+    Node& node1_obj = stick1.getNodeByIndex(first_idx % 3);
+    Node& node2_obj = stick2.getNodeByIndex(second_idx % 3);
+    node1_obj.setTension((userSign == '+') ? 1 : -1);
+    node2_obj.setTension((userSign == '+') ? -1 : 1);
 
-    /* 7. check for possible 3 way connections */
-    applyMultiConnectionRules(locFirst, locSecond, first, second, userSign);
+    applyEdgeTypeRules(locFirst, locSecond, first_idx, second_idx, userSign);
 
-    std::cout << "Number of moves eliminated: " << num_connecs_elim_;
+    cout << "Number of moves eliminated: " << num_connecs_elim_;
 }
 
-/* optional helper used above */
+/* ───────────────── rule engine ─────────────────────────────────────── */
+
+void Matrix::applyEdgeTypeRules(Location loc1, Location loc2,
+                                int node1_idx, int node2_idx, char userSign)
+{
+    Stick& stick1 = getStickFromNode(node1_idx);
+    Stick& stick2 = getStickFromNode(node2_idx);
+    auto [rS, rE] = stickBlock(node1_idx);
+    auto [cS, cE] = stickBlock(node2_idx);
+
+    int count = stick1.getConnectionCount(stick2.getId());
+
+    if (count >= 2) {
+        // --- SECOND (OR MORE) CONNECTION: LOCKDOWN ---
+        for (int r = rS; r <= rE; ++r) {
+            for (int c = cS; c <= cE; ++c) {
+                if (data_[r][c] != "1" && data_[r][c] != "-1") writeCell(r, c, "x");
+                if (data_[c][r] != "1" && data_[c][r] != "-1") writeCell(c, r, "x");
+            }
+        }
+    } else { // count == 1
+        // --- FIRST CONNECTION ---
+        for (int r = rS; r <= rE; ++r) {
+            for (int c = cS; c <= cE; ++c) {
+                writeCell(r, c, "x");
+                writeCell(c, r, "x");
+            }
+        }
+        
+        data_[node1_idx][node2_idx] = (userSign == '+') ? "1" : "-1";
+        data_[node2_idx][node1_idx] = (userSign == '+') ? "-1" : "1";
+
+        if (connectionType(loc1, loc2) == Connection::ME) {
+            const string usr_sign(1, userSign);
+            const string inv_sign(1, (userSign == '+') ? '-' : '+');
+            if (loc1 != Location::M) { // node1 is End, node2 is Mid
+                writeCell(rS + 1, cS, usr_sign);
+                writeCell(rS + 1, cE, usr_sign);
+                writeCell(cS, rS + 1, inv_sign);
+                writeCell(cE, rS + 1, inv_sign);
+            } else { // node1 is Mid, node2 is End
+                writeCell(rS, cS + 1, usr_sign);
+                writeCell(rE, cS + 1, usr_sign);
+                writeCell(cS + 1, rS, inv_sign);
+                writeCell(cS + 1, rE, inv_sign);
+            }
+        }
+    }
+}
+
+
+/* ───────────────── low-level cell ops ──────────────────────────────── */
+
+void Matrix::writeCell(int r, int c, const string &val) {
+    string& currentCell = data_[r][c];
+
+    if (currentCell == val || currentCell == "2") return;
+
+    if (currentCell == "x" && (val == "+" || val == "-")) {
+        currentCell = val;
+        num_connecs_elim_--; // Give back a move (x is 2 elims, +/- is 1)
+        return;
+    }
+    
+    if (currentCell == "x") return; // Otherwise, x is final
+
+    string originalState = currentCell;
+    currentCell = val;
+    
+    if (originalState == "0") {
+        num_connecs_elim_ += (val == "x") ? 2 : 1;
+    } else if (originalState == "+" || originalState == "-") {
+        if (val == "x") num_connecs_elim_++;
+    }
+}
+
+
+void Matrix::applyDirectedSign(int i, int j, char sign)
+{
+    writeCell(i, j, (sign == '+') ? "1" : "-1");
+    writeCell(j, i, (sign == '+') ? "-1" : "1");
+}
+
+/* ───────────────────────── HELPERS (No Changes Below) ─────────────────────────────── */
+
 void Matrix::checkSignBounding(char sign, int i, int j, bool &flag)
 {
     flag = ((sign == '-' && data_[i][j] == "+") ||
@@ -87,7 +163,6 @@ void Matrix::checkSignBounding(char sign, int i, int j, bool &flag)
         cout << "Invalid input: sign must match existing bound.\n";
 }
 
-/* pretty-print with red x’s and axis guides */
 void Matrix::print() const
 {
     constexpr int W = 4;
@@ -111,8 +186,6 @@ void Matrix::print() const
         cout << '\n';
     }
 }
-
-/* ───────────────── console helpers ─────────────────────────────────── */
 
 void Matrix::clearConsole() { cout << "\n\n"; }
 
@@ -178,14 +251,6 @@ char Matrix::promptSign() const
     }
 }
 
-/* ───────────────── low-level cell ops ──────────────────────────────── */
-
-void Matrix::applyDirectedSign(int i, int j, char sign)
-{
-    data_[i][j] = (sign == '+') ? "1" : "-1";
-    data_[j][i] = (sign == '+') ? "-1" : "1";
-}
-
 bool Matrix::isWritable(int i, int j) const
 {
     const string &cur = data_[i][j];
@@ -195,34 +260,9 @@ bool Matrix::isWritable(int i, int j) const
     return false;
 }
 
-void Matrix::writeCell(int r, int c, const string &v)
-{
-
-    if ((v == "-" && data_[r][c] == "+") || (v == "+" && data_[r][c] == "-"))
-    {
-        data_[r][c] = "x";
-        num_connecs_elim_++;
-        return;
-    }
-    if (data_[r][c] == "0")
-    {
-        if (v == "x")
-        {
-            num_connecs_elim_ += 2;
-        }
-        else if (v == "-" || v == "+")
-        {
-            num_connecs_elim_++;
-        }
-        data_[r][c] = v;
-    }
-}
-
-/* ───────────────── stick helpers ───────────────────────────────────── */
-
 std::pair<int, int> Matrix::stickBlock(int idx) const
 {
-    int s = (idx / 3) * 3; // inclusive [s, s+2]
+    int s = (idx / 3) * 3;
     return {s, s + 2};
 }
 
@@ -248,11 +288,11 @@ Matrix::Location Matrix::locationOf(int idx) const
     switch (idx % 3)
     {
     case 0:
-        return Location::E1; // 0,3,6…
+        return Location::E1;
     case 1:
-        return Location::M; // 1,4,7…
+        return Location::M;
     default:
-        return Location::E2; // 2,5,8…
+        return Location::E2;
     }
 }
 
@@ -263,65 +303,6 @@ void Matrix::assignLocations(int n1, Location &l1,
     l2 = locationOf(n2);
 }
 
-/* ───────────────── rule engine ─────────────────────────────────────── */
-
-void Matrix::applyEdgeTypeRules(Location loc1, Location loc2,
-                                int node1, int node2, char userSign)
-{
-    /* 1. block ranges */
-    auto [rS, rE] = stickBlock(node1); // node1 rows
-    auto [cS, cE] = stickBlock(node2); // node2 cols
-
-    // Check if Mid ↔ End connection
-    if (connectionType(loc1, loc2) == Connection::ME)
-    {
-        /* 2. Mid ↔ End special signs */
-        const bool endOnRows = (loc1 != Location::M); // true if node1 is END
-        int midS, midE, midC;
-        int endS, endE, endC;
-
-        if (endOnRows)
-        {
-            endS = rS;
-            endE = rE;
-            endC = rS + 1;
-            midS = cS;
-            midE = cE;
-            midC = cS + 1;
-        }
-        else
-        {
-            midS = rS;
-            midE = rE;
-            midC = rS + 1;
-            endS = cS;
-            endE = cE;
-            endC = cS + 1;
-        }
-
-        const string usr(1, userSign);
-        const string inv(1, (userSign == '+') ? '-' : '+');
-
-        writeCell(endC, midS, usr); // horizontal pair
-        writeCell(endC, midE, usr);
-
-        writeCell(midS, endC, inv); // vertical pair
-        writeCell(midE, endC, inv);
-    }
-    /* 2./3. blanket ‘x’ fill */
-    for (int r = rS; r <= rE; ++r)
-        for (int c = cS; c <= cE; ++c)
-        {
-            writeCell(r, c, "x");
-            writeCell(c, r, "x"); // mirror
-        }
-}
-
-/* ───────────────── connection helper ───────────────────────────────── */
-
-/******************************************************************************
- *  connectionType — classify two Locations as EE / MM / ME
- ******************************************************************************/
 Matrix::Connection Matrix::connectionType(Location a, Location b)
 {
     const bool aMid = (a == Location::M);
@@ -331,10 +312,9 @@ Matrix::Connection Matrix::connectionType(Location a, Location b)
         return Connection::MM;
     if (!aMid && !bMid)
         return Connection::EE;
-    return Connection::ME; // exactly one Middle
+    return Connection::ME;
 }
 
-/* ───────────────── isFull query ────────────────────────────────────── */
 bool Matrix::isFull() const
 {
     for (const auto &row : data_)
@@ -346,24 +326,10 @@ bool Matrix::isFull() const
 
 void Matrix::applyMultiConnectionRules(Location loc1, Location loc2, int node1, int node2, char userSign)
 {
-    /* 1. block ranges */
-    auto [rS, rE] = stickBlock(node1); // node1 rows
-    auto [cS, cE] = stickBlock(node2); // node2 cols
+    // This function is intentionally left blank.
+}
 
-    for (int r = rS; r <= rE; ++r)
-    {
-        for (int i = 0; i < matrixSize_; ++i)
-        {
-            writeCell(r, i, "+");
-            writeCell(i, r, "+"); // mirror
-        }
-    }
-    for (int c = cS; c <= cE; ++c)
-    {
-        for (int i = 0; i < matrixSize_; ++i)
-        {
-            writeCell(i, c, "+");
-            writeCell(c, i, "+"); // mirror
-        }
-    }
+Stick& Matrix::getStickFromNode(int nodeNumber) {
+    int stickId = nodeNumber / 3;
+    return sticks_[stickId];
 }

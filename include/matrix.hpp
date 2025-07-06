@@ -17,7 +17,8 @@
 
 #include <vector>
 #include <string>
-#include <utility>      // std::pair
+#include <utility>
+#include "stick.hpp" // Include the new stick header
 
 class Matrix
 {
@@ -42,27 +43,25 @@ public:
     /* ────────────────────────────────────────────────────────────────── */
     /*  Construction & user interaction                                  */
     /* ────────────────────────────────────────────────────────────────── */
-    Matrix();                 ///< Prompt for stick count and build matrix
-    void updateMatrix();      ///< Ask user for a connection and apply it
-    void print() const;       ///< Pretty-print coloured matrix to stdout
-
-    /* Inline validator (used by updateMatrix) */
+    Matrix();
+    void updateMatrix();
+    void print() const;
     void checkSignBounding(char userSign,
                            int first, int second,
                            bool& flagOut);
+    bool isFull() const;
 
-    /* ────────────────────────────────────────────────────────────────── */
-    /*  State queries                                                    */
-    /* ────────────────────────────────────────────────────────────────── */
-    bool isFull() const;      ///< True if no "0" cells remain
+    // New helper method
+    Stick& getStickFromNode(int nodeNumber);
 
 private:
     /* ────────────────────────────────────────────────────────────────── */
     /*  Internal data                                                    */
     /* ────────────────────────────────────────────────────────────────── */
-    int matrixSize_{0};                                       ///< side length
-    std::vector<std::vector<std::string>> data_;              ///< cell text
-    unsigned num_connecs_elim_ = 0;                           ///< number of connections eliminated by last made connection
+    int matrixSize_{0};
+    std::vector<std::vector<std::string>> data_;
+    unsigned num_connecs_elim_ = 0;
+    std::vector<Stick> sticks_; // Add a vector of sticks
 
     /* ────────────────────────────────────────────────────────────────── */
     /*  Console / input helpers                                          */

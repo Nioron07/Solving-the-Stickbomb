@@ -10,6 +10,8 @@
                 "-Iinclude",
                 "src/main.cc",
                 "src/matrix.cc",
+                "src/node.cc",
+                "src/stick.cc",
                 "-o",
                 "bin/output"
             ],
@@ -17,6 +19,6 @@
             "problemMatcher": [
                 "$gcc"
             ]
-        },
+        }
     ]
 }
